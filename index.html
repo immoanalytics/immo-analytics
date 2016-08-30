@@ -1,0 +1,557 @@
+
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Immo Analytics</title>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+	<link rel="stylesheet" type="text/css" href="src/css/main.css">
+	<link rel="stylesheet" type="text/css" href="src/css/radio.css">
+	<link rel="stylesheet" type="text/css" href="src/css/jquery-ui.min.css">
+	<link rel="stylesheet" type="text/css" href="src/css/sliders.css">
+    <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.0.0-rc.3/dist/leaflet.css" />
+
+</head>
+
+<body>
+
+    <!--Script Reference-->
+    <script src="https://npmcdn.com/leaflet@1.0.0-rc.3/dist/leaflet.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+    <script src="https://cdn.zingchart.com/zingchart.min.js"></script>
+	<script src="https://raw.githubusercontent.com/simontabor/jquery-toggles/master/toggles.min.js"></script>
+    <script src="src/js/communes.js"></script>
+	<script src="src/js/funcs.js"></script>
+	<script src="src/js/jquery-ui.min.js"></script>
+	
+	
+	
+    <div id="titleDiv">
+        <h1 align="center">Immo Analytics</h1>
+    </div>
+
+    <div id="debugDiv">
+    </div>
+
+    <script>
+        // Handle JSLint validation
+        /*jslint browser:true */
+        /*global zingchart, L, $, jQuery*/
+        /*global define */
+        /*jslint vars: true, plusplus: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
+
+        "use strict";
+
+        // Global variables
+
+        var g_XMLfile1 = "src/data/avg_price_rentals.xml",
+			g_XMLfile2 = "src/data/avg_score_rentals.xml",
+			g_XMLfile3 = "src/data/count_totals.xml",
+			g_XMLfile4 = "src/data/choropleth_rentals.xml",
+			g_XMLfile5 = "src/data/choropleth_sales.xml";
+			
+        function showhide(id) {
+            var e = document.getElementById(id);
+            e.style.display = (e.style.display === 'block') ? 'none' : 'block';
+        }
+
+        function clearBox(elementID) {
+            document.getElementById(elementID).innerHTML = "";
+        }
+        
+
+        function searchXML(pXMLfile, pPostalCode) {
+        	// Before making query we should show preloader
+        	
+
+            var avgPriceArray = [],
+				avgScoresArray = [],
+				avgCountsArray =[];
+
+			// dictionary like {postal_code: [bedroom_numbers, price], ect...}:
+			var bedroomsObject = {};
+
+			function getBedroomsObj(postcode, bedrooms, livArea, price) {
+	        	if(bedroomsObject[postcode]){
+					bedroomsObject[postcode].push([bedrooms, livArea, price]);
+				} else {
+					bedroomsObject[postcode] = [];
+					bedroomsObject[postcode].push([bedrooms, livArea, price]);
+				}
+        	}
+        
+            $.ajax({
+                type: "GET",
+                url: pXMLfile,
+				crossDomain: true,
+                dataType: 'xml',
+                async: false, //very important to allow return
+                success: function(xml) {
+                    //console.log(xml);
+                    $(xml).find('dataset').each(function() {
+
+						switch (pXMLfile) {
+							case g_XMLfile1:
+								var postalCode = $(this).find('postalcode').text(),
+									avgPrice = $(this).find('averageprice').text();
+								//console.log("Postal Code=" + postalCode);
+								//console.log("Average Price=" + avgPrice);
+
+								if (postalCode == pPostalCode) {
+									avgPriceArray.push(Number(avgPrice));
+								}
+
+								break;
+
+							case g_XMLfile2:
+								var postalCode = $(this).find('postalcode').text(),
+									avgLivingArea = $(this).find('avglivingarea').text(),
+									avgLand = $(this).find('avgland').text(),
+									avgBedrooms = $(this).find('avgbedrooms').text(),
+									avgRentalPrice = $(this).find('avgrentalprice').text(),
+									avgSalesPrice = $(this).find('avgsalesprice').text();
+
+									//console.log("Postal Code=" + postalCode);
+									//console.log("avgLivingArea=" + avgLivingArea);
+
+								if (postalCode == pPostalCode) {
+									avgScoresArray.push(Number(avgLivingArea));
+									avgScoresArray.push(Number(avgLand));
+									avgScoresArray.push(Number(avgBedrooms));
+									avgScoresArray.push(Number(avgRentalPrice));
+									avgScoresArray.push(Number(avgSalesPrice));
+								}
+
+								break;
+								
+							case g_XMLfile3:
+								var postalCode = $(this).find('POSTALCODE').text(),
+									commune = $(this).find('COMMUNE').text(),
+									estateType = $(this).find('TYPE').text(),
+									countRentals = $(this).find('COUNT_RENTALS').text(),
+									countSales = $(this).find('COUNT_SALES').text(),
+									countTotals = $(this).find('COUNT_TOTALS').text();
+
+								if (postalCode == pPostalCode && estateType == "Apartment") {
+									avgCountsArray.push(Number(postalCode));
+									avgCountsArray.push(commune);
+									avgCountsArray.push(estateType);
+									avgCountsArray.push(Number(countRentals));
+									avgCountsArray.push(Number(countSales));
+									avgCountsArray.push(Number(countTotals));
+								}
+
+								break;
+							// map coloring with the room range average price	
+							case g_XMLfile4:
+								var bedrooms = parseInt($(this).find('BEDROOMS').text()),
+									price = parseInt($(this).find('PRICE').text()),
+								    postcode = $(this).find('POSTAL_CODE').text(),
+								    estateType = $(this).find('TYPE').text(),
+								    livArea = parseInt($(this).find('LIVING_AREA').text());
+								
+									if ($( "#f-option" ).prop( "checked")){
+										if (estateType == 'House') {
+											getBedroomsObj(postcode, bedrooms, livArea, price);
+										}
+									} else if ($( "#s-option" ).prop( "checked")){
+										if (estateType  == 'Apartment') {
+	                                		getBedroomsObj(postcode, bedrooms, livArea, price);
+										}
+									} else {
+										getBedroomsObj(postcode, bedrooms, livArea, price);
+									}
+								
+								break;
+
+							}
+					});
+				},
+                error: function() {
+                    $('.debugDiv').text('Failed to get feed');
+                },
+            });
+			switch (pXMLfile) {
+				case g_XMLfile1: return avgPriceArray;
+				case g_XMLfile2: return avgScoresArray;
+				case g_XMLfile3: return avgCountsArray;
+				case g_XMLfile4: return bedroomsObject;
+			}
+
+        }
+
+        function renderLineChart1(pValues, pTargetDiv, pText) {
+
+            //console.log(pValues);
+            var chartData = {
+                "type": "line",
+                "background-color": "#f0f0f5",
+                "title": {
+                    "text": pText,
+                    "font-weight": "normal",
+                    "font-family": "Helvetica",
+                    "font-size": "14px",
+                    "text-align": "left",
+                    "padding-left": "25px"
+                },
+                "plotarea": {
+                    "background-color": "none",
+                    "margin-top": "60px",
+                    "margin-left": "30px",
+                    "margin-right": "30px",
+                    "margin-bottom": "5px"
+                },
+                "subtitle": {
+                    "text": "In the last 6 months",
+                    //"font-color": "#ffffff",
+                    "alpha": 0.7,
+                    "font-size": "11px",
+                    "font-style": "italic",
+                    "text-align": "left",
+                    "padding-top": "-5px",
+                    "padding-left": "25px",
+                    "font-weight": "normal",
+                    "font-family": "Helvetica"
+                },
+                "plot": {
+                    "aspect": "spline",
+                    "animation": {
+                        "effect": "1",
+                        "delay": "200",
+                        "speed": "200"
+                    },
+                    "marker": {
+                        "type": "circle",
+                        "background-color": "#0C9BBC",
+                        "border-width": 1,
+                        "size": 7,
+                        "shadow": 1,
+                        "border-color": "#ffffff"
+                    }
+                },
+                "scale-x": {
+                    "visible": false
+                },
+                "scale-y": {
+                    "visible": false
+                },
+                "series": [ // Insert your series data here.
+                    {
+                        //"values": [1865, 1934, 1987, 1657]
+                        values: pValues
+                    }
+                ]
+            };
+
+            zingchart.render({ // Render Method[3]
+                id: pTargetDiv,
+                data: chartData,
+                height: 100,
+                width: 380
+            });
+
+            return true;
+        }
+
+        function renderGrid(pValues, pTargetDiv, choropleth) {
+        	if (choropleth == true) {
+        		var series = [
+					{
+						"values":["Average Price", pValues[0] + " EUR" ]
+					},
+					{
+						"values":["Average Living Area", pValues[1] + " m2"]
+					}
+				]
+        	} else {
+	        	var series = [
+					{
+						"values":["Average Living Area", pValues[0] + " m2" ]
+					},
+					{
+						"values":["Average Land", pValues[1] + " m2"]
+					},
+					{
+						"values":["Average Nb Bedrooms",pValues[2] ]
+					},
+					{
+						"values":["Average Rental Price",pValues[3] + " EUR"]
+					},
+					{
+						"values":["Average Sales Price",pValues[4] + " EUR"]
+					}
+				]
+			}
+			zingchart.MODULESDIR = "https://cdn.zingchart.com/modules/";
+
+			var chartData = {
+					"graphset":[
+						{
+							"type":"grid",
+							"plotarea":{
+								"margin":"0 0 0 0"
+							},
+							"options":{
+								"header-row":false,
+								"col-widths":["75%","25%"],
+								"flat": false,
+								"style": {
+								    ".td":{
+										//"y":"0px",
+										"background-color":"#f0f0f5",
+										"font-color":"#000000",
+										"font-size":"16",
+										"font-weight":"normal",
+										"font-family":"Helvetica",
+										"height":"30px",
+										"border-color":"#f0f0f5",
+										"border":"0px"
+									},
+									".td_1":{
+										"y":"0px",
+										"font-color":"#000000",
+										"font-size":"16",
+										"font-weight":"bold",
+										"font-family":"Helvetica",
+										"align":"right"
+									}
+								}
+							},
+							"series": series
+						}
+					]
+				};
+
+			zingchart.render({
+				id : pTargetDiv,
+				data : chartData,
+				height: 150,
+				width: 380
+			});
+		}
+		var featureLayer = "";
+		var mymap = "";
+		var info = "";
+		var defaultStyle = {
+                "clickable": true,
+                "color": "#efedf5",
+                "fillColor": "#A7BDC4",
+                "weight": 2.0,
+                "opacity": 0.9,
+                "fillOpacity": 0.5
+            };
+		function createMap() {
+			
+            mymap = L.map('mapDiv', {
+                dragging: false,
+                zoomControl: false
+            }).setView([50.850, 4.36], 12);
+			
+			info = L.control();
+			
+			info.onAdd = function (mymap) {
+				this._div = L.DomUtil.create('div', 'info'); // create a div with a class "info"
+				this.update();
+				return this._div;
+			};
+
+			// method that we will use to update the control based on feature properties passed
+			info.update = function (props) {
+				this._div.innerHTML = '<h4>Commune</h4>' + ( props ? props : 'Hover over an area ...');
+			};
+
+			info.addTo(mymap);
+
+			
+
+            
+
+            var highlightStyle = {
+                "clickable": true,
+                "color": "#a1d99b",
+                "fillColor": "#a1d99b",
+                "weight": 2.0,
+                "opacity": 0.5,
+                "fillOpacity": 0.7
+            };
+			
+			var highlightFeatureStyle = {
+				"weight": 5,
+				"color": '#666',
+				"dashArray": '',
+				"fillOpacity": 0.7
+			};
+			
+            var featureLayer = new L.GeoJSON();
+
+            var onEachFeature = function(feature, layer) {
+                // Load the default style.
+                layer.setStyle(defaultStyle);
+                // Create a self-invoking function that passes in the layer
+                // and the properties associated with this particular record.
+                (function(layer, properties) {
+                	//this for the coloring if we have some range properties
+                
+                    layer.on("mouseover", function(e) {
+                        layer.setStyle(highlightStyle);
+						info.update(properties.name);
+
+                    });
+                    layer.on("click", function(e, properties, layer) {
+
+                        this.setStyle(highlightStyle);
+
+                        // START --> display relevant information about the selected commune
+                        //
+                        var codeSelected = this.feature['properties']['code'];
+						console.log("Selected Postal Code="+codeSelected);
+
+                        var replyArray = [];
+                        replyArray = searchXML(g_XMLfile1, codeSelected);
+						//console.log("reply_g_XMLfile1=" + replyArray);
+
+                        // display charts
+                        var targetDiv = 'chartDivRent';
+                        renderLineChart1(replyArray, targetDiv, "Average Rental Price");
+
+						replyArray = searchXML(g_XMLfile2, codeSelected);
+
+                        targetDiv = 'avgScores';
+                        renderGrid(replyArray, targetDiv);
+						
+						// display all counts 
+						//targetDiv = 'debugDiv';
+						replyArray = searchXML(g_XMLfile3, codeSelected);
+						
+						console.clear();
+						console.log("Postal Code=" + replyArray[0]);
+						console.log("Commune=" + replyArray[1]);
+						console.log("Type=" + replyArray[2]);
+						console.log("Count Rentals=" + replyArray[3]);
+						console.log("Count Sales=" + replyArray[4]);
+						console.log("Count Totals=" + replyArray[5]);
+                        //
+                        // END
+
+                    });
+                    // Create a mouseout event that undoes the mouseover changes
+                    layer.on("mouseout", function(e) {
+                        // Start by reverting the style back
+                        layer.setStyle(defaultStyle);
+						info.update();
+                    });
+                    // Close the "anonymous" wrapper function, and call it while passing
+                    // in the variables necessary to make the events work the way we want.
+                })
+                (layer, feature.properties);
+            };
+
+            featureLayer = L.geoJson(communeData, {
+                onEachFeature: onEachFeature
+            });
+
+            L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpandmbXliNDBjZWd2M2x6bDk3c2ZtOTkifQ._QA7i5Mpkd_m30IGElHziw', {
+                minZoom: 12,
+                maxZoom: 12,
+                attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, ' +
+                    '<a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, ' +
+                    'Imagery © <a href="http://mapbox.com">Mapbox</a>',
+                id: 'mapbox.streets'
+            }).addTo(mymap);
+
+            mymap.addLayer(featureLayer);
+
+
+
+			
+        }
+	
+		
+
+    </script>
+<!-- this shows when the searching starts -->
+		<div id="shadow">
+			<img id="loader" src="src/img/loader.gif"> 
+		</div>
+
+    <div id="bodyDiv" style="width: 1180px; height: 800px; margin:0 auto;">
+    <h1 id="wtf" style="color: white"></h1>	
+        <table border="0">
+            <tr>
+                <td>
+                    <div id="filtersDiv" style="width: 180px; height: 250px; margin:0 auto; position:relative; ">
+						<ul>
+						  <li>
+							<input type="radio" id="f-option" name="selector">
+							<label for="f-option">House</label>
+							
+							<div class="check"></div>
+						  </li>
+						  
+						  <li>
+							<input type="radio" id="s-option" name="selector">
+							<label for="s-option">Apartment</label>
+							
+							<div class="check"><div class="inside"></div></div>
+						  </li>
+
+						  <li style="margin-bottom: 30px;">
+						  	<label for="room-slider" style="
+								margin-top: 0px;
+								padding-top: 5px;
+								padding-left: 0px;">
+									Rooms
+							</label>
+							<div class="generic-slider" id="room-slider"></div>
+							<p class="slide-label" id="room-slider-result"></p>
+							
+						  </li>
+
+						  <li style="margin-bottom: 30px;">
+
+						  	<label for="meter-slider" style="
+								margin-top: 0px;
+								padding-top: 5px;
+								padding-left: 0px;">
+									Sq. meters
+							</label>
+							<div class="generic-slider" id="meter-slider"></div>
+							<p class="slide-label" id="meter-slider-result"></p>
+							
+						  </li>
+
+						  <li>
+						  <button class="btn sample" id="refreshStyle">Refresh</button>
+						  </li>
+						</ul>
+                    </div>
+                </td>
+                <td>
+                    <div id="mapDiv" style="width: 900px; height: 900px; margin:0 auto;">
+                    <div style="display:none" id='legend'>
+        			</div>
+                    </div>
+                </td>
+                <td>
+                    <div id="chartDivRent" style="width: 380px; height: 100px; margin:0 auto;">
+                    </div>
+                    <div id="avgScores" style="width: 380px; margin:0 auto;">
+                    </div>
+                </td>
+            </tr>
+        </table>
+        		
+    </div>
+
+    <script type="text/javascript">
+        createMap();
+    </script>
+
+	<script src="src/js/sliders.js"></script>
+</body>
+
+</html>
